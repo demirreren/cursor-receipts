@@ -20,6 +20,7 @@ const PRINTER_NAME = process.env.PRINTER_NAME || "EPSON_TM_T20II";
 const PORT = Number(process.env.PORT || 9999);
 const PRINT_TOKEN = process.env.PRINT_TOKEN || "";
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || "";
+const RECEIPT_TEXT_WIDTH = 42;
 
 // Load logo once at startup
 let logoBuffer: Buffer | null = null;
@@ -199,6 +200,37 @@ async function processImage(imageData: Buffer): Promise<Buffer> {
   return Buffer.concat([header, bitmap]);
 }
 
+function wrapReceiptText(value: string, maxWidth = RECEIPT_TEXT_WIDTH): string[] {
+  const lines: string[] = [];
+  for (const paragraph of value.split("\n")) {
+    const trimmed = paragraph.trim();
+    if (!trimmed) {
+      lines.push("");
+      continue;
+    }
+    const words = trimmed.split(/\s+/);
+    let line = "";
+    for (const word of words) {
+      const candidate = line ? `${line} ${word}` : word;
+      if (candidate.length <= maxWidth) {
+        line = candidate;
+      } else {
+        if (line) lines.push(line);
+        if (word.length > maxWidth) {
+          for (let i = 0; i < word.length; i += maxWidth) {
+            lines.push(word.slice(i, i + maxWidth));
+          }
+          line = "";
+        } else {
+          line = word;
+        }
+      }
+    }
+    if (line) lines.push(line);
+  }
+  return lines.length ? lines : [""];
+}
+
 async function print(job: PrintJob) {
   try {
     console.log("[PRINT] Starting print job:", {
@@ -241,23 +273,38 @@ async function print(job: PrintJob) {
     
     // 2. Add text (between logo and image) - styled for café receipts
     if (job.name || job.text) {
+      const dividerLine = "=".repeat(RECEIPT_TEXT_WIDTH);
+
+      parts.push(Buffer.from([0x1b, 0x61, 0x00])); // Left align
+      parts.push(Buffer.from(`${dividerLine}\n`));
+
       // Name: Bold, larger, centered
       if (job.name) {
         parts.push(Buffer.from([0x1b, 0x61, 0x01])); // Center align
         parts.push(Buffer.from([0x1b, 0x45, 0x01])); // Bold ON
-        parts.push(Buffer.from([0x1d, 0x21, 0x11])); // Double height + width (GS !)
+        parts.push(Buffer.from([0x1d, 0x21, 0x11])); // Double height + width
         parts.push(Buffer.from(job.name));
         parts.push(Buffer.from([0x1d, 0x21, 0x00])); // Normal size
         parts.push(Buffer.from([0x1b, 0x45, 0x00])); // Bold OFF
         parts.push(Buffer.from([0x1b, 0x61, 0x00])); // Left align
-        parts.push(Buffer.from("\n"));
+        parts.push(Buffer.from("\n\n"));
       }
-      
-      // Text: Normal size, left aligned
+
+      // Project name section
       if (job.text) {
-        parts.push(Buffer.from(job.text));
+        parts.push(Buffer.from([0x1b, 0x45, 0x01])); // Bold ON
+        parts.push(Buffer.from("BUILDING...\n"));
+        parts.push(Buffer.from([0x1b, 0x45, 0x00])); // Bold OFF
+        parts.push(Buffer.from([0x1d, 0x21, 0x01])); // Double height
+        for (const line of wrapReceiptText(job.text)) {
+          parts.push(Buffer.from(line));
+          parts.push(Buffer.from("\n"));
+        }
+        parts.push(Buffer.from([0x1d, 0x21, 0x00])); // Normal size
         parts.push(Buffer.from("\n"));
       }
+
+      parts.push(Buffer.from(`${dividerLine}\n`));
       
       console.log("[PRINT] Added styled text");
     }
@@ -623,8 +670,8 @@ serve({
         </div>
         ` : ""}
         <div class="form-group">
-          <label for="text">Message</label>
-          <textarea id="text" name="text" placeholder="What are you building?"></textarea>
+          <label for="text">Project name</label>
+          <input type="text" id="text" name="text" placeholder="What are you building?">
         </div>
         <div class="form-group">
           <label for="image">Photo</label>
@@ -640,7 +687,7 @@ serve({
       e.preventDefault();
       const fd = new FormData(e.target);
       if (!fd.get('text') && !fd.get('image')) {
-        alert("Add text or photo!");
+        alert("Add project name or photo!");
         return;
       }
       const button = e.target.querySelector('button[type="submit"]');
