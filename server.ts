@@ -23,17 +23,21 @@ const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || "";
 
 // Load logo once at startup
 let logoBuffer: Buffer | null = null;
-const logoPath = join(process.cwd(), "assets", "logo.png");
-if (existsSync(logoPath)) {
+const logoCandidates = [
+  join(process.cwd(), "assets", "cursor_freeform.png"),
+  join(process.cwd(), "assets", "logo.png"),
+];
+const logoPath = logoCandidates.find((candidate) => existsSync(candidate));
+if (logoPath) {
   try {
     logoBuffer = readFileSync(logoPath);
-    console.log("[LOGO] Logo loaded from assets/logo.png");
+    console.log(`[LOGO] Logo loaded from ${logoPath.replace(`${process.cwd()}/`, "")}`);
   } catch (err: any) {
     console.warn("[LOGO] Failed to load logo:", err?.message || err);
   }
 } else {
-  console.log("[LOGO] No logo found at assets/logo.png (optional - skipping)");
-  console.log("[LOGO] To add a logo, place logo.png in the assets/ folder");
+  console.log("[LOGO] No logo found in assets/ (optional - skipping)");
+  console.log("[LOGO] To add a logo, place cursor_freeform.png or logo.png in assets/");
 }
 
 async function processImage(imageData: Buffer): Promise<Buffer> {
@@ -213,8 +217,8 @@ async function print(job: PrintJob) {
     
     // Order: Logo → Text → Image (with minimal spacing)
     
-    // 1. Add logo first (if logo exists and image is present)
-    if (logoBuffer && job.image) {
+    // 1. Add logo first when available
+    if (logoBuffer) {
       try {
         console.log("[PRINT] Adding logo...");
         parts.push(Buffer.from("\n")); // Minimal spacing before logo
