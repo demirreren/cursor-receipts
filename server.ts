@@ -1,4 +1,4 @@
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import { serve } from "bun";
 import { PNG } from "pngjs";
 import sharp from "sharp";
@@ -21,6 +21,7 @@ const PORT = Number(process.env.PORT || 9999);
 const PRINT_TOKEN = process.env.PRINT_TOKEN || "";
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL || "";
 const RECEIPT_TEXT_WIDTH = 42;
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // phone photos are well under this
 
 // Load logo once at startup
 let logoBuffer: Buffer | null = null;
@@ -238,7 +239,7 @@ async function print(job: PrintJob) {
       hasText: !!job.text,
       hasImage: !!job.image,
       imageName: job.image?.name,
-      imageSize: job.image?.size
+      imageSize: job.image?.data.length
     });
     
     // Build ESC/POS command buffer
@@ -342,12 +343,12 @@ async function print(job: PrintJob) {
     const command = Buffer.concat(parts);
     console.log("[PRINT] Total command size:", command.length, "bytes");
     
-    // Send through lp -o raw
+    // Send through lp -o raw (no shell, so PRINTER_NAME is passed as a plain argument)
     console.log("[PRINT] Sending to printer...");
-    execSync(`cat | lp -d "${PRINTER_NAME}" -o raw`, { input: command });
+    execFileSync("lp", ["-d", PRINTER_NAME, "-o", "raw"], { input: command });
     console.log("[PRINT] ✓ Print command sent successfully");
     
-    const preview = job.text?.slice(0, 50).replace(/\n/g, " ") || job.image ? "[image]" : "blank";
+    const preview = job.text?.slice(0, 50).replace(/\n/g, " ") || (job.image ? "[image]" : "blank");
     console.log("PRINTED:", preview);
   } catch (err: any) {
     console.error("[PRINT] Print error:", err?.message || err);
@@ -375,6 +376,7 @@ print({ text: "🧾 PRINTER READY – café mode activated 🧾" });
 
 serve({
   port: PORT,
+  maxRequestBodySize: MAX_UPLOAD_BYTES,
   async fetch(req) {
     const url = new URL(req.url);
     console.log("[HTTP] ===== REQUEST =====");
@@ -561,6 +563,7 @@ serve({
     }
     
     input[type="text"],
+    input[type="password"],
     textarea {
       width: 100%;
       padding: 0.75rem;
@@ -575,6 +578,7 @@ serve({
     }
     
     input[type="text"]:focus,
+    input[type="password"]:focus,
     textarea:focus {
       outline: none;
       border-color: var(--theme-border-hover);
@@ -582,6 +586,7 @@ serve({
     }
     
     input[type="text"]::placeholder,
+    input[type="password"]::placeholder,
     textarea::placeholder {
       color: var(--theme-text-sec);
     }
@@ -609,6 +614,7 @@ serve({
     }
     
     input[type="file"]::file-selector-button {
+      font-family: inherit;
       padding: 0.5rem 1rem;
       margin-right: 0.75rem;
       background: var(--theme-button-bg);
@@ -625,6 +631,7 @@ serve({
     }
     
     button[type="submit"] {
+      font-family: inherit;
       width: 100%;
       padding: 0.875rem 1.5rem;
       font-size: 0.9375rem;
@@ -695,7 +702,8 @@ serve({
       button.textContent = "Printing...";
       button.disabled = true;
       try {
-        await fetch("/chat", {method:"POST",body:fd});
+        const res = await fetch("/chat", {method:"POST",body:fd});
+        if (!res.ok) throw new Error(res.status === 401 ? "Wrong token" : "Error - Try again");
         button.textContent = "Queued! 🧾";
         setTimeout(() => {
           button.textContent = originalText;
@@ -703,7 +711,7 @@ serve({
         }, 2000);
         e.target.reset();
       } catch (err) {
-        button.textContent = "Error - Try again";
+        button.textContent = err.message === "Wrong token" ? "Wrong token" : "Error - Try again";
         button.disabled = false;
         setTimeout(() => {
           button.textContent = originalText;
@@ -716,8 +724,8 @@ serve({
       `, { headers: { "Content-Type": "text/html" } });
     }
 
-    console.log("[HTTP] No matching route, returning 'ok'");
-    return new Response("ok");
+    console.log("[HTTP] No matching route");
+    return new Response("not found", { status: 404 });
   },
 });
 

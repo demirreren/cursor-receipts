@@ -1,15 +1,22 @@
 {
-  "name": "thermal-printer",
+  "name": "cursor-receipts",
   "version": "1.0.0",
-  "description": "USB thermal printer server",
+  "private": true,
+  "description": "Thermal receipt print station for Cafe Cursor: builders upload a photo of their project and it prints in seconds",
+  "type": "module",
   "main": "server.ts",
   "scripts": {
     "start": "bun server.ts",
-    "dev": "bun --watch server.ts"
+    "dev": "bun --watch server.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "pngjs": "^7.0.0",
-    "sharp": "^0.34.5",
-    "usb": "^2.11.0"
+    "sharp": "^0.34.5"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "@types/pngjs": "^6.0.5",
+    "typescript": "^5.9.0"
   }
 }

@@ -1,101 +1,82 @@
-# Thermal Printer Server (USB)
+# cursor-receipts 🧾
 
-A simple server for printing to USB thermal printers, with optional public internet access.
+A thermal receipt print station for builder events. Builders open a page on their phone, type what they're building, add a photo of it, and it prints as a receipt a few seconds later. Everyone walks out holding what they made.
+
+Built in March 2026 for Cafe Cursor, the builder pop-ups I ran in Waterloo and Toronto as Cursor's campus lead. Inspired by the print station Ameen Neami set up at Toronto's first Cafe Cursor.
+
+<p align="center">
+  <img src="docs/web-ui.png" width="320" alt="The Send to Printer page, with fields for name, print token, project name and photo">
+</p>
+
+## How it works
+
+```
+phone ──► web form ──► Bun server (laptop) ──► print queue ──► lp -o raw ──► USB thermal printer
+              ▲                                (1 job / 8s)
+     Cloudflare Tunnel
+```
+
+1. The Bun server serves a mobile-friendly form and accepts uploads on `POST /chat`.
+2. Jobs go into a queue that prints one receipt every 8 seconds, so a rush of uploads doesn't jam the printer.
+3. Each photo is auto-rotated from EXIF (so iPhone photos aren't sideways), scaled to the printer's 576-dot width with `sharp`, then Floyd–Steinberg dithered down to 1-bit so photos keep their shading.
+4. The server builds the receipt as raw ESC/POS bytes (logo, name, `BUILDING...` plus the project name, the photo, then an auto-cut) and sends it to the printer through CUPS.
+
+**Stack:** Bun, TypeScript, sharp, pngjs, ESC/POS, CUPS, Cloudflare Tunnel
 
 ## Setup
 
-1. **Install Bun** (if not already installed):
-   ```bash
-   curl -fsSL https://bun.sh/install | bash
-   ```
+Requires [Bun](https://bun.sh) and macOS or Linux with CUPS.
 
-2. **Install dependencies**:
+1. **Add the printer to CUPS.** Plug in the USB printer and add it (macOS: System Settings → Printers & Scanners). Find its name with:
+   ```bash
+   lpstat -p
+   ```
+2. **Install dependencies:**
    ```bash
    bun install
    ```
-
-3. **Connect your USB thermal printer** (Epson TM-m50, TM-T20II, etc.)
-
-4. **Run the server**:
+3. **Run the server:**
    ```bash
-   bun server.ts
+   PRINTER_NAME=EPSON_TM_T20II bun start
    ```
+   A test receipt prints on startup.
+4. **Open it** at `http://YOUR-LOCAL-IP:9999` from any device on the same network (macOS: `ipconfig getifaddr en0`).
 
-5. **Access the web interface**:
-   - Open `http://YOUR-MAC-LOCAL-IP:9999` on any device
-   - Find your IP: `ifconfig en0 | grep inet`
+### Configuration
 
-## Configuration
+| Variable          | Default          | Description                                                 |
+| ----------------- | ---------------- | ----------------------------------------------------------- |
+| `PRINTER_NAME`    | `EPSON_TM_T20II` | CUPS printer name (from `lpstat -p`)                        |
+| `PORT`            | `9999`           | Port for the web server                                     |
+| `PRINT_TOKEN`     | none             | Shared secret required to print. Set this for public access |
+| `PUBLIC_BASE_URL` | none             | Public URL, printed in the server logs                      |
 
-Set these environment variables when needed:
+The receipt header uses `assets/cursor_freeform.png`, falling back to `assets/logo.png`. Swap either file to rebrand it for your own event.
 
-- `PRINTER_NAME` (default: `EPSON_TM_T20II`)
-- `PORT` (default: `9999`)
-- `PRINT_TOKEN` (optional but recommended for public access)
-- `PUBLIC_BASE_URL` (optional; printed in server logs)
+## Running it at an event
 
-Example:
+The printer is plugged into a laptop, so the laptop has to stay on and run the server. To let people print from their phones on any network (event Wi-Fi is often isolated), expose the server with a tunnel and turn on the token:
 
 ```bash
-PRINTER_NAME=EPSON_TM_T20II PORT=9999 PRINT_TOKEN=choose-a-long-secret bun server.ts
+PRINT_TOKEN=choose-a-long-secret bun start
+cloudflared tunnel --url http://localhost:9999   # brew install cloudflared
 ```
 
-## Public Internet Access (not same network)
+Share the generated `https://...trycloudflare.com` URL (a QR code on the table works well) and the token. [ngrok](https://ngrok.com) also works: `ngrok http 9999`.
 
-Because the printer is USB-connected, your Mac must stay on and running this server.
+## Endpoints
 
-### Option A: Cloudflare Tunnel (recommended)
+| Route          | Description                                                                          |
+| -------------- | ------------------------------------------------------------------------------------ |
+| `GET /`        | Upload form                                                                          |
+| `POST /chat`   | Multipart form: `name`, `text`, `image`, `token` (or an `x-print-token` header)      |
+| `GET /health`  | `{ ok, queueLength, printer }`                                                       |
 
-1. Install `cloudflared`:
-   ```bash
-   brew install cloudflared
-   ```
-2. Start the printer server with a token:
-   ```bash
-   PRINT_TOKEN=choose-a-long-secret bun server.ts
-   ```
-3. Expose it publicly:
-   ```bash
-   cloudflared tunnel --url http://localhost:9999
-   ```
-4. Share the generated `https://...trycloudflare.com` URL.
+Uploads are capped at 25 MB.
 
-Anyone with the URL + token can submit print jobs from anywhere.
+## Supported printers
 
-### Option B: Ngrok
+Any 80mm ESC/POS thermal printer that supports raster images (`GS v 0`), including:
 
-```bash
-ngrok http 9999
-```
-
-Use the generated HTTPS URL. Keep `PRINT_TOKEN` enabled.
-
-## Features
-
-- USB printer support (no network required)
-- Web interface for sending messages
-- Image printing support
-- Queue system (prints every 8 seconds)
-- ESC/POS compatible thermal printers
-- `GET /health` endpoint for quick status checks
-
-## USB Setup Notes
-
-- **macOS**: Should work out of the box
-
-## Supported Printers
-
-Any ESC/POS compatible thermal printer, including:
-- Epson TM-m50, TM-T20II, TM-m30 series
-- Star Micronics printers
-- Other ESC/POS thermal printers
-
-## Usage
-
-1. Open the web interface on any device
-2. Enter your name (optional)
-3. Type a message or upload an image
-4. Click "PRINT IT"
-5. Your message will be queued and printed in a few seconds!
-
-
+- Epson TM-T20II, TM-m30 series, TM-m50
+- Star Micronics printers in ESC/POS mode
