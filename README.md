@@ -1,14 +1,25 @@
 # cursor-receipts 🧾
 
-A thermal receipt print station for builder events. Builders open a page on their phone, type what they're building, add a photo of it, and it prints as a receipt a few seconds later. Everyone walks out holding what they made.
+When you build software there's nothing to hold at the end, just a URL and a screenshot. cursor-receipts gives builder events a physical keepsake. People open a page on their phone, type what they're building and add a photo, and a thermal printer on the table prints it as a receipt a few seconds later. Everyone walks out holding what they made.
 
-Built in March 2026 for Cafe Cursor, the builder pop-ups I ran in Waterloo and Toronto as Cursor's campus lead. Inspired by the print station Ameen Neami set up at Toronto's first Cafe Cursor.
+I built it for the Cursor community events I ran as campus lead in Waterloo and Toronto, from Cafe Cursor pop-ups to Freeform build nights. It was inspired by the print station Ameen Neami set up at Toronto's first Cafe Cursor.
 
-<p align="center">
-  <img src="docs/web-ui.png" width="320" alt="The Send to Printer page, with fields for name, print token, project name and photo">
-</p>
+<table>
+  <tr>
+    <td width="50%"><img src="docs/receipt-cafe-cursor.jpg" alt="Demir at Cafe Cursor holding a printed receipt with the Cursor logo, his name, what he is building, and a dithered photo of himself"></td>
+    <td width="50%"><img src="docs/receipt-freeform.jpg" alt="A receipt with the Cursor Freeform logo reading 'Justin, Shayaan, Demir', 'BUILDING... Cursor @ Waterloo', above a dithered photo of the three of them"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>The first version, at Cafe Cursor</sub></td>
+    <td align="center"><sub>The current layout, with the Freeform logo</sub></td>
+  </tr>
+</table>
 
 ## How it works
+
+<p align="center">
+  <img src="docs/web-ui.png" width="280" alt="The Send to Printer page, with fields for name, print token, project name and photo">
+</p>
 
 ```
 phone ──► web form ──► Bun server (laptop) ──► print queue ──► lp -o raw ──► USB thermal printer
